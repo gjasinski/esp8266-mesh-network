@@ -7,15 +7,26 @@
 #define MESH_INTERNAL_PASSWORD "thispasswordisnotsafe"
 
 WiFiServer server(80);
+String PING = "4/"; //todo change to PING request
+String PING_RESPONSE = "5";
 //todo we should discuss and create some mesh packet to know who should get this message
-// esp8266 -subscribe-topic-> broker so there is new sensor and it should subscribe topic ep. temperature, humidity
-// Broker -publish-> esp8266 sends some topic ep. humidity broadcast or unicast ep. /humidity or /18/humidity
-// esp8266 -send-data-> broker response to broker
-// esp8266 -unsubscrive-> broker it should do also node which detect missing node(should unsubscibe missing node)?
+// [0/id/temperatura]esp8266 -subscribe-topic-> broker so there is new sensor and it should subscribe topic ep. temperature, humidity
+// [1/id/temperatura]Broker -publish-> esp8266 sends some topic ep. humidity broadcast or unicast ep. /humidity or /18/humidity
+// [2/id/temperatura/dane]esp8266 -send-data-> broker response to broker
+// [3/id/temperatura]esp8266 -unsubscrive-> broker it should do also node which detect missing node(should unsubscibe missing node)?
+// ping[4/ipaddress] //ping request
+// ping[5] //ping response
+//
 
 
 int myId = -1;
+int myParentId = -1;
 int masterId = -1;
+
+//==ping variables
+int pingContinue = 1;
+int pingCounter = 1;//we don't want to ping in first moment
+int pingCounterModulo = 10000;
 
 int getMaxNetworkId();
 
@@ -30,6 +41,7 @@ void setup() {
 
     int maxNetworkId = getMaxNetworkId();
     myId = maxNetworkId + 1;
+    myParentId = maxNetworkId;
 
     String mySSID = "ESPMESH-" + String(myId);
     Serial.println("I will advertise myself as " + mySSID);
@@ -110,15 +122,48 @@ void handleIncomingHTTPRequest(WiFiClient client) {
     //todo it's too data in simple ok response, make it shorter maybe some code or sth
     //todo discuss
     String s = "HTTP/1.1 200 OK\r\n";
-    s += "Content-Type: text/plain\r\n\r\n";
-    s += "Great Success\r\n";
     client.print(s);
     //client.close();
-
-    if (body.length() > 0) {
+    incomingRequestStrategy(body);
+ /*
+  *    todo this should be in strategy
+  *    if (body.length() > 0) {
         // TODO: put this in a transmit queue or something like that, now this will create a blocking process on all the hops until the edge of the network
         transmitSensorData(body);
     }
+    */
+}
+
+void incomingRequestStrategy(String body){
+  char packetType = body[0];
+  switch (packetType){
+    case '0':
+      break;
+    case '1':
+      break;
+    case '2':
+      break;
+    case '3':
+      break;
+    case '4':
+      String ipAddress = body.substring(1);
+      String response = PING_RESPONSE;
+      sendPacketToIp(response, ipAddress);
+      Serial.println("RECEIVED PING REQUEST");
+      break;
+   // case '5':
+     // pingContinue = 1;
+      //Serial.println("RECEIVED PING RESPONSE");
+      //break;
+   /// default:
+  //    Serial.println("Not known packet: " + body);
+  }
+}
+
+void sendPacketToIp(String body, String address){
+  HTTPClient http;
+  http.begin(address);
+  int code = http.POST(body);
 }
 
 void transmitSensorData(String data) {
@@ -135,11 +180,7 @@ void transmitSensorData(String data) {
 }
 
 String getParentIpAddress() {
-    return "http://192.168." + String(4 + myId - 1) + ".1/";
-}
-
-void pingYourMaster() {
-
+    return "http://192.168." + String(4 + myParentId) + ".1/";
 }
 
 int sleep = 0;
@@ -150,6 +191,7 @@ void loop() {
     if (client) {
         handleIncomingHTTPRequest(client);
     } else {
+        handlePing();
         delay(1);  // small delay so we don't wait one second before handling incoming http traffic
         sleep += 1;
         if (sleep >= 1000) { //todo extract magic number and adopt sleep time, that it should in some resonable intervals send sensor data or if it device will subscribe to topic, then it should be deleted and respond only for pubish
@@ -161,4 +203,26 @@ void loop() {
             sleep = 0;
         }
     }
+}
+
+void handlePing(){
+  pingCounter = pingCounter % pingCounterModulo;
+  if(pingCounter == 0){
+    if(pingContinue == 0){
+      initializeSearchingForNewParent();
+    }
+    else{
+      sendPing();
+      pingContinue = 0;
+    }
+  }
+}
+
+void initializeSearchingForNewParent(){
+  Serial.println("initializeSearching for new parent");
+}
+
+void sendPing(){
+  String request = PING;
+  transmitSensorData(request);
 }
