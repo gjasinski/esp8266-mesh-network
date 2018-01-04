@@ -33,8 +33,8 @@ String myChildId = "-1";
 //==ping variables
 int pingContinue = 1;
 int pingCounter = 1;//we don't want to ping in first moment
-int pingCounterModulo = 1000;
-
+int pingCounterModulo = 10000;
+String mySSID;
 int getMaxNetworkId();
 
 void connectToNetwork();
@@ -48,10 +48,10 @@ void setup() {
 
     int maxNetworkId = getMaxNetworkId();
     myId = maxNetworkId + 1;
-    Serial.println("MYPARENTID: " + myParentId);
+    Serial.println("MYPARENTID: " + String(myParentId));
     myParentId = maxNetworkId;
 
-    String mySSID = "ESPMESH-" + String(myId);
+    mySSID = "ESPMESH-" + String(myId);
     Serial.println("I will advertise myself as " + mySSID);
 
     WiFi.mode(WIFI_AP_STA);
@@ -80,7 +80,7 @@ int getMaxNetworkId() {
                 }
             }
         }
-        Serial.println("MAX NUM: " + maxnum);
+        Serial.println("MAX NUM: " + String(maxnum));
     if(maxnum == -1) return 3;
     else return maxnum;
 }
@@ -104,9 +104,20 @@ void connectToNetwork() {
     //if (myId != 0)registerMeAsChild();
 }
 
+void connectTo(String id){
+   String parentSSID = "ESPMESH-" + id;
+        Serial.println("connecting as client to " + parentSSID);
+        WiFi.begin(parentSSID.c_str(), MESH_INTERNAL_PASSWORD);
+
+    while (WiFi.status() != WL_CONNECTED) {
+        delay(10);
+    }
+}
+
 void configureAPSettings(String mySSID) {
-    IPAddress apIP(192, 168, 4 + myId, 1);
-    IPAddress apGateway(192, 168, 4 + myId, 1);
+  Serial.println("KONFIGURUJE: " + String(myId));
+    IPAddress apIP(192, 168, myId, 1);
+    IPAddress apGateway(192, 168, myId, 1);
     IPAddress apSubmask(255, 255, 255, 0);
 
     WiFi.softAPConfig(apIP, apGateway, apSubmask);
@@ -162,8 +173,10 @@ void incomingRequestStrategy(String body){
       String sourceAddress = convertIdToAddress(sourceId);
       String response = PING_RESPONSE;
       Serial.println("WYSYLAM RESPOND: " + response + " ADDRESS: " + sourceAddress);
+      connectTo(sourceId);
       sendPacketToIp(response, sourceAddress);
       Serial.println("RECEIVED PING REQUEST");
+      configureAPSettings(mySSID);
       break;
     }
     case '5': {//ping response
@@ -210,7 +223,7 @@ void loop() {
     if (client) {
         handleIncomingHTTPRequest(client);
     } else {
-        if (/*myParentId.indexOf("-1") =! 0*/ myParentId != -1) {
+        if (/*myParentId.indexOf("-1") =! 0*/ myParentId != 3) {
           handlePing();
         }
         delay(1);  // small delay so we don't wait one second before handling incoming http traffic
@@ -220,9 +233,9 @@ void loop() {
 void handlePing(){
   pingCounter = pingCounter % pingCounterModulo;
   if(pingCounter == 0){
-    Serial.println("loguje 0");
+    Serial.println("myparent" + String(myParentId));
     if(pingContinue == 0){
-      initializeSearchingForNewParent();
+      //initializeSearchingForNewParent();
     }
     else{
       sendPing();
@@ -230,7 +243,7 @@ void handlePing(){
       pingContinue = 0;
     }
   }else{
-    Serial.println("loguje: " + pingCounter);
+    //Serial.println("loguje: " + String(pingCounter));
   }
   pingCounter++;
 }
@@ -321,7 +334,7 @@ void sendPing(){
 }
 
 String getParentIpAddress() {
-    return convertIdToAddress(String(4 + myParentId));
+    return convertIdToAddress(String(myParentId));
 }
 
 String convertIdToAddress(String id){
@@ -329,8 +342,11 @@ String convertIdToAddress(String id){
 }
 
 void sendPacketToIp(String body, String address){
+  Serial.println("SENDING: "+body + " " + address);
   HTTPClient http;
   http.begin(address);
   int code = http.POST(body);
-  Serial.println(body + " code: " + code);
+  Serial.println(body + " code: " + String(code));
+  
+  configureAPSettings(mySSID);
 }
