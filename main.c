@@ -16,7 +16,7 @@ String UNSUBSCRIBE_TOPIC_REQUEST = "3/";
 String PING_REQUEST = "4/";
 String PING_RESPONSE = "5";
 String REGISTER_CHILD_REQUEST = "6/";
-//todo we should discuss and create some mesh packet to know who should get this message
+
 // [0/id/temperatura]esp8266 -subscribe-topic-> broker so there is new sensor and it should subscribe topic ep. temperature, humidity
 // [1/id/temperatura]Broker -publish-> esp8266 sends some topic ep. humidity broadcast or unicast ep. /humidity or /18/humidity
 // [2/id/temperatura/dane]esp8266 -send-data-> broker response to broker
@@ -101,7 +101,7 @@ void connectToNetwork() {
         Serial.println("waiting for connection");
         delay(1000);
     }
-    //if (myId != 0)registerMeAsChild();
+    if (myId != 0)registerMeAsChild();
 }
 
 void connectTo(String id){
@@ -154,9 +154,12 @@ void incomingRequestStrategy(String body){
       break;
     }
     case '1': {
-      respondeToPublishTypePacket(body);
+      if(isItPublishTypePacketAddressedToMe == 1){
+        respondeToPublishTypePacket(body);
+      }
       if (shouldIForwardPublishTypePacket(body) == 1){
-        sendPacketToIp(body, convertIdToAddress(myChildId));
+        String childIdAddr = convertIdToAddress(myChildId);
+        changeNetworkAndSendPacket(myChildId), childIdAddr, body);
       }
       break;
     }
@@ -172,11 +175,7 @@ void incomingRequestStrategy(String body){
       String sourceId = body.substring(2);
       String sourceAddress = convertIdToAddress(sourceId);
       String response = PING_RESPONSE;
-      Serial.println("WYSYLAM RESPOND: " + response + " ADDRESS: " + sourceAddress);
-      connectTo(sourceId);
-      sendPacketToIp(response, sourceAddress);
-      Serial.println("RECEIVED PING REQUEST");
-      configureAPSettings(mySSID);
+      changeNetworkAndSendPacket(sourceId, sourceAddress, response);
       break;
     }
     case '5': {//ping response
@@ -186,7 +185,7 @@ void incomingRequestStrategy(String body){
     }
     case '6': {//register childId
       myChildId = body.substring(1);
-      Serial.println("REGISTER CHILD:" + myChildId);
+      Serial.println("REGISTERED CHILD:" + myChildId);
       break;
     }
     default:{
@@ -200,6 +199,14 @@ void incomingRequestStrategy(String body){
          }
          */
   }
+}
+
+void changeNetworkAndSendPacket(int sourceId, String sourceAddress, String response){
+  Serial.println("WYSYLAM PAKIET DO DZIECKA: " + response + " ADDRESS: " + sourceAddress);
+  connectTo(sourceId);
+  sendPacketToIp(response, sourceAddress);
+  Serial.println("RECEIVED PING REQUEST");
+  configureAPSettings(mySSID);
 }
 /*
 void transmitSensorData(String data) {
@@ -215,15 +222,12 @@ void transmitSensorData(String data) {
     //Serial.printf("transmitting sensor data, return code: %d\r\n", code);
 }*/
 
-int sleep = 0;
-int messageId = 0;
-
 void loop() {
     WiFiClient client = server.available();
     if (client) {
         handleIncomingHTTPRequest(client);
     } else {
-        if (/*myParentId.indexOf("-1") =! 0*/ myParentId != 3) {
+        if (myParentId != 3) {
           handlePing();
         }
         delay(1);  // small delay so we don't wait one second before handling incoming http traffic
@@ -242,8 +246,6 @@ void handlePing(){
       pingCounter = 1;
       pingContinue = 0;
     }
-  }else{
-    //Serial.println("loguje: " + String(pingCounter));
   }
   pingCounter++;
 }
@@ -297,7 +299,7 @@ void unSubscribeToTopicWithNode(String nodeId){
   sendPacketToIp(data, getParentIpAddress());
 }
 
-int shouldIForwardPublishTypePacket(String body){
+int isItPublishTypePacketAddressedToMe(String body){
   String bodyWithoutHeader = body.substring(2);
   //if(strstr((const char*)bodyWithoutHeader, "/") == NULL){
   if(bodyWithoutHeader.indexOf("/") == -1){
@@ -310,6 +312,22 @@ int shouldIForwardPublishTypePacket(String body){
   else{
     Serial.println("shouldIForwardPublishTypePacket=false contains=" + bodyWithoutHeader);
     return 0;
+  }
+}
+
+int shouldIForwardPublishTypePacket(String body){
+  String bodyWithoutHeader = body.substring(2);
+  //if(strstr((const char*)bodyWithoutHeader, "/") == NULL){
+  if(bodyWithoutHeader.indexOf("/") == -1){
+    return 1;
+  }
+  if(bodyWithoutHeader == String(myId)){
+    Serial.println("shouldIForwardPublishTypePacket=true contains=" + bodyWithoutHeader);
+    return 0;
+  }
+  else{
+    Serial.println("shouldIForwardPublishTypePacket=false contains=" + bodyWithoutHeader);
+    return 1;
   }
 }
 
@@ -328,13 +346,18 @@ void respondeToPublishTemperaturePacket(String body){
 }
 
 void sendPing(){
-  String request = PING_REQUEST + myId;
+  String requestsendPacketToIp = PING_REQUEST + myId;
   String address = getParentIpAddress();
   sendPacketToIp(request, address);
 }
 
 String getParentIpAddress() {
-    return convertIdToAddress(String(myParentId));
+    if(myParentId == 4){
+      return HOME_HTTP_SERVER;
+    }
+    else{
+      return convertIdToAddress(String(myParentId));
+    }
 }
 
 String convertIdToAddress(String id){
@@ -347,6 +370,8 @@ void sendPacketToIp(String body, String address){
   http.begin(address);
   int code = http.POST(body);
   Serial.println(body + " code: " + String(code));
-  
+  //todo is it necessery?
   configureAPSettings(mySSID);
+  //end todo
 }
+``
